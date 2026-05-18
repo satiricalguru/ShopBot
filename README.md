@@ -138,9 +138,6 @@ Then open **http://localhost:8000** and add your Telegram credentials via ⚙️
 
 MIT — see [LICENSE](LICENSE)
 
+Developed by **Satirical Guru** , **Claude** & **Antigravity** .
+
 ---
-
-## ✅ Before Publishing
-
-1. **Credentials are safe** — token and chat ID live only in `settings.json`, which is gitignored. They are never in `.env` or any committed file.
-2. **Restrict CORS** — change `allow_origins=["*"]` in `backend/app.py` to your actual origin if deploying publicly.
