@@ -38,6 +38,15 @@ Then open **http://localhost:8000** in your browser.
 
 ---
 
+## Screenshots
+
+<img width="2928" height="1512" alt="image" src="https://github.com/user-attachments/assets/12ef1f32-c175-4f88-b239-97ba2718edb3" />
+
+
+
+
+---
+
 ## 📁 Project Structure
 
 ```
