@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Env — NEVER commit your real secrets
+.env
+
+# User settings (Telegram token/chat ID saved via UI — never commit)
+settings.json
+
+# Playwright
+screenshots/
+
+# Old root-level legacy files (now replaced by backend/) — scoped to root only
+/config.py
+/main.py
+/monitor.py
+/notifier.py
+/requirements.txt
+/test_notify.py
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
