@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ShopBot — Stock Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060A14;--bg2:#0C1526;--bg3:#111E35;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --accent:#FF6200;--accent2:#FF8C40;--glow-a:rgba(255,98,0,0.28);
+  --green:#00E676;--red:#FF2D55;--yellow:#FFD60A;
+  --text:#DDE6F5;--muted:#4E627E;--muted2:#7A90AF;
+  --ff-h:'Syne',sans-serif;--ff-m:'IBM Plex Mono',monospace;--ff-b:'DM Sans',sans-serif;
+  --r:12px;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--ff-b);min-height:100vh;overflow-x:hidden}
+
+/* ── Animated canvas background ── */
+#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0.55}
+
+/* ── Subtle grid overlay on top of canvas ── */
+body::before{content:'';position:fixed;inset:0;z-index:1;
+  background-image:
+    linear-gradient(rgba(255,98,0,0.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,98,0,0.025) 1px,transparent 1px);
+  background-size:60px 60px;pointer-events:none}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:4px}
+
+/* ── Header ── */
+header{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;
+  padding:16px 40px;background:rgba(6,10,20,0.85);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border)}
+.static-banner {
+  background: linear-gradient(90deg, rgba(255, 214, 10, 0.12), rgba(255, 98, 0, 0.12));
+  border-bottom: 1px solid rgba(255, 98, 0, 0.2);
+  color: var(--yellow);
+  text-align: center;
+  padding: 10px 20px;
+  font-size: 0.82rem;
+  font-family: var(--ff-b);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  z-index: 101;
+  position: relative;
+  animation: fadeIn .4s ease;
+}
+.static-banner a {
+  color: var(--accent2);
+  text-decoration: underline;
+  font-weight: 600;
+  transition: color .2s;
+}
+.static-banner a:hover {
+  color: var(--accent);
+}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--ff-h);font-size:1.25rem;font-weight:800;
+  letter-spacing:-0.03em;color:var(--text);text-decoration:none}
+.logo-dot{width:11px;height:11px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 10px var(--accent);animation:pulse-dot 2s ease-in-out infinite}
+@keyframes pulse-dot{0%,100%{box-shadow:0 0 8px var(--accent)}50%{box-shadow:0 0 22px var(--accent),0 0 40px var(--glow-a)}}
+.header-right{display:flex;align-items:center;gap:10px}
+.monitor-pill{display:none;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;
+  font-family:var(--ff-m);font-size:0.7rem;font-weight:500;
+  background:rgba(0,230,118,.08);border:1px solid rgba(0,230,118,.25);color:var(--green)}
+.monitor-pill.visible{display:flex}
+.monitor-pill-dot{width:7px;height:7px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 6px var(--green);animation:blink 1.5s ease-in-out infinite}
+.ws-badge{display:flex;align-items:center;gap:6px;font-family:var(--ff-m);font-size:0.7rem;
+  color:var(--muted);padding:5px 12px;border:1px solid var(--border);border-radius:20px}
+.ws-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);transition:.3s}
+.ws-dot.live{background:var(--green);box-shadow:0 0 6px var(--green)}
+.btn-icon{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  background:var(--bg2);border:1px solid var(--border);cursor:pointer;color:var(--muted2);
+  transition:all .2s;font-size:1.05rem}
+.btn-icon:hover{background:var(--bg3);border-color:var(--border2);color:var(--text)}
+
+/* ── Layout ── */
+.layout{position:relative;z-index:2;max-width:1600px;margin:0 auto;
+  padding:50px 36px 80px;display:grid;
+  grid-template-columns:1fr 420px;grid-template-rows:auto auto 1fr;gap:28px;
+  grid-template-areas:"hero hero" "result watch" "hist watch"}
+
+/* ── Hero ── */
+.hero{grid-area:hero;text-align:center;padding:30px 0 16px}
+.hero h1{font-family:var(--ff-h);font-size:3.6rem;font-weight:800;letter-spacing:-0.045em;line-height:1.08;
+  background:linear-gradient(135deg,#ffffff 25%,var(--accent2) 70%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px}
+.hero p{color:var(--muted2);font-size:1.1rem;font-weight:300;margin-bottom:24px}
+.platform-chips{display:flex;justify-content:center;gap:12px;margin-bottom:28px}
+.platform-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 18px;border-radius:24px;
+  font-family:var(--ff-m);font-size:0.78rem;font-weight:500;
+  border:1px solid var(--border2);background:var(--bg2);color:var(--muted2);
+  transition:all .2s}
+.platform-chip.flipkart{border-color:rgba(255,98,0,.4);color:#FF8C40;background:rgba(255,98,0,.06)}
+.platform-chip.amazon{border-color:rgba(255,153,0,.4);color:#FF9900;background:rgba(255,153,0,.06)}
+
+/* ── Search bar (bigger) ── */
+.search-wrap{max-width:900px;margin:0 auto;display:flex;align-items:center;gap:0;
+  background:rgba(12, 21, 38, 0.5);backdrop-filter:blur(8px);border:1.5px solid var(--border2);border-radius:16px;
+  padding:8px 8px 8px 22px;transition:border-color .2s,box-shadow .3s,transform .2s;
+  box-shadow:0 4px 20px 0 rgba(0,0,0,0.2)}
+.search-wrap:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--glow-a),0 8px 24px 0 rgba(255,98,0,0.15);transform:translateY(-1px)}
+#url-input{flex:1;background:transparent;border:none;outline:none;color:var(--text);
+  font-family:var(--ff-m);font-size:0.95rem;line-height:1;padding:6px 0}
+#url-input::placeholder{color:var(--muted)}
+.search-divider{width:1px;background:var(--border);margin:4px 8px;align-self:stretch;flex-shrink:0}
+#pincode-input{width:160px;background:transparent;border:none;outline:none;color:var(--text);
+  font-family:var(--ff-m);font-size:0.95rem;padding:6px 6px}
+#pincode-input::placeholder{color:var(--muted)}
+.btn-check{background:var(--accent);color:#fff;border:none;border-radius:10px;cursor:pointer;
+  padding:13px 28px;font-family:var(--ff-h);font-size:0.95rem;font-weight:700;letter-spacing:0.02em;
+  display:flex;align-items:center;gap:8px;transition:all .2s;white-space:nowrap;flex-shrink:0}
+.btn-check:hover{background:var(--accent2);transform:translateY(-1px)}
+.btn-check:active{transform:translateY(0)}
+.btn-check.loading{opacity:.7;pointer-events:none}
+.spinner{width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,.3);
+  border-top-color:#fff;animation:spin .7s linear infinite;display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn-check.loading .spinner{display:block}
+.btn-check.loading .btn-icon-inner{display:none}
+
+/* ── Platform badge ── */
+.platform-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:14px;
+  font-family:var(--ff-m);font-size:0.7rem;font-weight:500;letter-spacing:.04em;text-transform:uppercase}
+.platform-badge.flipkart{background:rgba(255,98,0,.12);border:1px solid rgba(255,98,0,.3);color:#FF8C40}
+.platform-badge.amazon{background:rgba(255,153,0,.12);border:1px solid rgba(255,153,0,.3);color:#FF9900}
+
+/* ── Result card ── */
+.result-area{grid-area:result}
+#result-card{background:rgba(12, 21, 38, 0.7);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;
+  display:none;transition:display 0.4s,opacity 0.4s ease-out,transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition-behavior: allow-discrete;box-shadow:0 8px 32px 0 rgba(0,0,0,0.3);
+  opacity:1;transform:translateY(0)}
+@starting-style {
+  #result-card.visible {
+    opacity:0;
+    transform:translateY(18px);
+  }
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+#result-card.visible{display:block}
+.rc-header{display:flex;align-items:center;justify-content:space-between;
+  padding:16px 22px;border-bottom:1px solid var(--border)}
+.rc-header span{font-family:var(--ff-m);font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.rc-body{display:flex;gap:24px;padding:22px}
+.rc-img{width:110px;height:110px;border-radius:10px;object-fit:cover;background:var(--bg3);flex-shrink:0}
+.rc-img-ph{width:110px;height:110px;border-radius:10px;background:var(--bg3);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:2rem}
+.rc-info{flex:1;min-width:0}
+.rc-title{font-family:var(--ff-h);font-size:1.05rem;font-weight:700;line-height:1.35;margin-bottom:10px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rc-meta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.rc-price{font-family:var(--ff-m);font-size:1.2rem;font-weight:500;color:var(--accent2)}
+.status-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:22px;
+  font-family:var(--ff-m);font-size:0.74rem;font-weight:500;letter-spacing:.04em;text-transform:uppercase}
+.status-pill.in-stock{background:rgba(0,230,118,.12);color:var(--green);border:1px solid rgba(0,230,118,.25)}
+.status-pill.out-stock{background:rgba(255,45,85,.12);color:var(--red);border:1px solid rgba(255,45,85,.25)}
+.status-pill.unknown{background:rgba(255,214,10,.1);color:var(--yellow);border:1px solid rgba(255,214,10,.2)}
+.pill-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.status-pill.in-stock .pill-dot{animation:blink 1.5s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.rc-actions{display:flex;gap:10px;margin-top:6px}
+.btn-sm{padding:8px 16px;border-radius:8px;cursor:pointer;font-family:var(--ff-b);font-size:0.84rem;font-weight:500;
+  transition:all .2s;border:1px solid var(--border2);background:var(--bg3);color:var(--text);
+  text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.btn-sm:hover{background:var(--border2);border-color:var(--muted)}
+.btn-sm.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-sm.primary:hover{background:var(--accent2)}
+.rc-error{padding:22px;color:var(--red);font-family:var(--ff-m);font-size:0.85rem}
+
+/* ═══════════ WATCHLIST ═══════════ */
+.watchlist-panel{grid-area:watch}
+.panel{background:rgba(12, 21, 38, 0.7);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;
+  box-shadow:0 8px 32px 0 rgba(0,0,0,0.3);transition:all .3s ease}
+.panel:hover{border-color:var(--border2);box-shadow:0 12px 40px 0 rgba(0,0,0,0.45)}
+.panel-header{display:flex;align-items:center;justify-content:space-between;
+  padding:16px 18px;border-bottom:1px solid var(--border)}
+.panel-title{font-family:var(--ff-h);font-size:0.88rem;font-weight:700;
+  letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.count-badge{font-family:var(--ff-m);font-size:0.7rem;background:var(--bg3);
+  border:1px solid var(--border);padding:2px 9px;border-radius:10px;color:var(--muted2)}
+.btn-add{width:30px;height:30px;border-radius:8px;background:var(--accent);border:none;cursor:pointer;
+  color:#fff;font-size:1.2rem;display:flex;align-items:center;justify-content:center;transition:background .2s}
+.btn-add:hover{background:var(--accent2)}
+
+/* Stats bar */
+.wl-stats{display:none;border-bottom:1px solid var(--border)}
+.wl-stats.visible{display:flex}
+.wl-stat{flex:1;padding:12px;text-align:center;border-right:1px solid var(--border)}
+.wl-stat:last-child{border-right:none}
+.wl-stat-val{font-family:var(--ff-m);font-size:1.1rem;font-weight:500}
+.wl-stat-val.green{color:var(--green)}.wl-stat-val.red{color:var(--red)}.wl-stat-val.yellow{color:var(--yellow)}
+.wl-stat-lbl{font-size:0.67rem;color:var(--muted);margin-top:2px}
+
+/* How-it-works */
+.wl-how{padding:22px 18px 0;display:none}
+.wl-how.visible{display:block}
+.how-steps{display:flex;flex-direction:column}
+.how-step{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)}
+.how-step:last-child{border-bottom:none}
+.how-step-icon{width:36px;height:36px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.1rem;background:var(--bg3);border:1px solid var(--border)}
+.how-step-title{font-size:0.85rem;font-weight:600;margin-bottom:3px}
+.how-step-desc{font-size:0.75rem;color:var(--muted2);line-height:1.45}
+.wl-how-cta{margin:16px 0 18px;width:100%;background:var(--accent);color:#fff;border:none;
+  border-radius:9px;padding:12px;font-family:var(--ff-h);font-size:0.9rem;font-weight:700;
+  cursor:pointer;transition:background .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+.wl-how-cta:hover{background:var(--accent2)}
+
+/* WL items */
+#watchlist-items{max-height:560px;overflow-y:auto}
+.wl-item{display:flex;align-items:flex-start;gap:12px;padding:16px 18px;
+  border-bottom:1px solid var(--border);cursor:default;
+  position:relative;overflow:hidden;
+  max-height:150px;
+  opacity:1;transform:translateX(0);
+  transition:background .15s, opacity 0.3s ease, transform 0.3s ease, max-height 0.3s ease, padding 0.3s ease;
+  transition-behavior: allow-discrete;
+}
+@starting-style {
+  .wl-item {
+    opacity:0;
+    transform:translateX(-20px);
+  }
+}
+.wl-item.exiting {
+  opacity:0;
+  transform:translateX(30px);
+  max-height:0;
+  padding-top:0;
+  padding-bottom:0;
+  border-bottom-color:transparent;
+}
+.wl-item:last-child{border-bottom:none}
+.wl-item:hover{background:rgba(255,255,255,.04);transform:scale(1.005)}
+.wl-item.is-checking::after{content:'';position:absolute;left:0;top:0;height:2px;width:100%;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  animation:scan 1.4s linear infinite}
+@keyframes scan{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+
+.wl-status-col{display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:3px}
+.wl-status-dot{width:10px;height:10px;flex-shrink:0;border-radius:50%;background:var(--muted);transition:.3s}
+.wl-status-dot.in{background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 1.5s infinite}
+.wl-status-dot.out{background:var(--red)}
+.wl-status-dot.checking{background:var(--yellow);animation:spin .8s linear infinite}
+.wl-status-dot.pending{background:var(--muted)}
+.wl-info{flex:1;min-width:0}
+.wl-name{font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:5px}
+.wl-price-row{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+.wl-price{font-family:var(--ff-m);font-size:0.95rem;font-weight:500;color:var(--accent2)}
+.wl-stock-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:11px;
+  font-family:var(--ff-m);font-size:0.68rem;font-weight:500}
+.wl-stock-pill.in{background:rgba(0,230,118,.12);color:var(--green);border:1px solid rgba(0,230,118,.25)}
+.wl-stock-pill.out{background:rgba(255,45,85,.1);color:var(--red);border:1px solid rgba(255,45,85,.2)}
+.wl-stock-pill.pending{background:rgba(255,214,10,.08);color:var(--yellow);border:1px solid rgba(255,214,10,.2)}
+.wl-meta-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.wl-meta-tag{font-family:var(--ff-m);font-size:0.65rem;color:var(--muted);
+  background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:2px 8px}
+.wl-meta-tag.interval{color:var(--accent2);border-color:rgba(255,98,0,.2);background:rgba(255,98,0,.06)}
+.wl-meta-tag.countdown{color:var(--yellow);border-color:rgba(255,214,10,.2);background:rgba(255,214,10,.06)}
+.wl-meta-tag.pincode{color:var(--muted2)}
+.wl-meta-tag.checking-label{color:var(--yellow);border-color:rgba(255,214,10,.3);
+  background:rgba(255,214,10,.06);animation:blink 1s ease-in-out infinite}
+.wl-meta-tag.platform-fk{color:#FF8C40;border-color:rgba(255,98,0,.2);background:rgba(255,98,0,.06)}
+.wl-meta-tag.platform-az{color:#FF9900;border-color:rgba(255,153,0,.2);background:rgba(255,153,0,.06)}
+.wl-actions{display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0}
+.wl-remove{background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem;
+  padding:3px 6px;border-radius:5px;transition:.15s}
+.wl-remove:hover{color:var(--red);background:rgba(255,45,85,.1)}
+.wl-open-link{font-size:0.67rem;font-family:var(--ff-m);color:var(--muted);text-decoration:none;
+  padding:2px 7px;border:1px solid var(--border);border-radius:5px;transition:.15s}
+.wl-open-link:hover{color:var(--text);border-color:var(--border2)}
+
+/* ── History ── */
+.history-panel{grid-area:hist}
+#history-list{max-height:380px;overflow-y:auto}
+.hist-item{display:flex;align-items:center;gap:14px;padding:13px 20px;
+  border-bottom:1px solid var(--border);
+  opacity:1;transform:translateY(0);
+  transition:background .15s, opacity 0.3s ease, transform 0.3s ease;
+  transition-behavior: allow-discrete;
+}
+@starting-style {
+  .hist-item {
+    opacity:0;
+    transform:translateY(10px);
+  }
+}
+.hist-item:hover{background:rgba(255,255,255,.03)}
+.hist-item:last-child{border-bottom:none}
+.hist-indicator{width:7px;height:7px;flex-shrink:0;border-radius:50%}
+.hist-indicator.in{background:var(--green)}.hist-indicator.out{background:var(--red)}.hist-indicator.err{background:var(--muted)}
+.hist-info{flex:1;min-width:0}
+.hist-title{font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-meta{font-family:var(--ff-m);font-size:0.68rem;color:var(--muted);margin-top:3px;display:flex;gap:10px}
+.hist-status{font-family:var(--ff-m);font-size:0.75rem;font-weight:500;white-space:nowrap}
+.hist-status.in{color:var(--green)}.hist-status.out{color:var(--red)}.hist-status.err{color:var(--muted)}
+.hist-empty{padding:36px 20px;text-align:center;color:var(--muted);font-size:0.88rem}
+
+/* ── Modals ── */
+.modal-overlay{position:fixed;inset:0;z-index:200;background:rgba(6,10,20,0);backdrop-filter:blur(0px);
+  display:none;align-items:center;justify-content:center;
+  transition:display 0.3s, background-color 0.3s, backdrop-filter 0.3s;
+  transition-behavior:allow-discrete}
+.modal-overlay.open{display:flex;background:rgba(6,10,20,.8);backdrop-filter:blur(10px)}
+@starting-style {
+  .modal-overlay.open {
+    background:rgba(6,10,20,0);
+    backdrop-filter:blur(0px);
+  }
+}
+.modal{background:rgba(12, 21, 38, 0.95);backdrop-filter:blur(20px);border:1px solid var(--border2);border-radius:16px;padding:32px;
+  width:480px;max-width:92vw;box-shadow:0 16px 48px 0 rgba(0,0,0,0.5);
+  transform:translateY(20px);opacity:0;
+  transition:transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+  transition-behavior:allow-discrete}
+.modal-overlay.open .modal{transform:translateY(0);opacity:1}
+@starting-style {
+  .modal-overlay.open .modal {
+    transform:translateY(20px);
+    opacity:0;
+  }
+}
+.modal h2{font-family:var(--ff-h);font-size:1.15rem;font-weight:700;margin-bottom:22px}
+.form-group{margin-bottom:18px}
+.form-label{display:block;font-size:0.8rem;color:var(--muted2);margin-bottom:7px;font-weight:500}
+.form-hint{font-size:0.74rem;color:var(--muted);margin-top:5px}
+.form-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:9px;
+  padding:12px 16px;color:var(--text);font-family:var(--ff-m);font-size:0.85rem;
+  outline:none;transition:border-color .2s,box-shadow .2s}
+.form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--glow-a)}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+.settings-section{margin-bottom:22px}
+.settings-section h3{font-family:var(--ff-h);font-size:0.82rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--muted2);margin-bottom:14px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
+.toggle-row span{font-size:0.88rem}
+.toggle{position:relative;display:inline-block;width:42px;height:23px}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;cursor:pointer;inset:0;background:var(--bg3);
+  border-radius:23px;border:1px solid var(--border);transition:.25s}
+.toggle-slider::before{content:'';position:absolute;height:15px;width:15px;left:3px;bottom:3px;
+  background:var(--muted);border-radius:50%;transition:.25s}
+.toggle input:checked + .toggle-slider{background:var(--accent);border-color:var(--accent)}
+.toggle input:checked + .toggle-slider::before{transform:translateX(19px);background:#fff}
+
+/* ── Clear history button (fixed) ── */
+.btn-clear-hist{
+  display:flex;align-items:center;justify-content:center;
+  width:30px;height:30px;border-radius:8px;
+  background:transparent;border:1px solid var(--border);
+  cursor:pointer;color:var(--muted2);font-size:0.9rem;
+  transition:all .2s;line-height:1;
+}
+.btn-clear-hist:hover{background:rgba(255,45,85,.12);border-color:rgba(255,45,85,.35);color:var(--red)}
+
+/* ── Toast ── */
+.toast-container{position:fixed;bottom:28px;right:28px;z-index:300;display:flex;flex-direction:column;gap:10px}
+.toast{background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:14px 18px;
+  min-width:260px;max-width:340px;font-size:0.86rem;display:flex;align-items:center;gap:12px;
+  animation:slideUp .25s ease;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.toast.success{border-color:rgba(0,230,118,.3);background:rgba(0,230,118,.06)}
+.toast.error{border-color:rgba(255,45,85,.3);background:rgba(255,45,85,.06)}
+.toast.info{border-color:rgba(255,98,0,.3);background:rgba(255,98,0,.06)}
+.toast-icon{font-size:1.05rem;flex-shrink:0}
+
+@media(max-width:900px){
+  .layout{grid-template-columns:1fr;grid-template-areas:"hero""result""watch""hist";padding:24px 18px 50px}
+  .hero h1{font-size:2.2rem}
+  header{padding:13px 20px}
+  .monitor-pill span.monitor-text{display:none}
+  #watchlist-items{max-height:400px}
+}
+</style>
+</head>
+<body>
+
+<div id="static-host-banner" class="static-banner" style="display:none;">
+  <span>⚠️ Running on a static host. Go to <a href="#" onclick="openModal('settings-modal'); return false;">Settings</a> to configure your Backend API URL.</span>
+</div>
+
+<!-- Animated canvas background -->
+<canvas id="bg-canvas"></canvas>
+
+<header>
+  <a class="logo" href="#"><div class="logo-dot"></div>ShopBot</a>
+  <div class="header-right">
+    <div class="monitor-pill" id="monitor-pill">
+      <div class="monitor-pill-dot"></div>
+      <span class="monitor-text">Monitoring <span id="monitor-count">0</span> product<span id="monitor-plural">s</span></span>
+    </div>
+    <div class="ws-badge">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-label">Connecting…</span>
+    </div>
+    <button class="btn-icon" title="Settings" onclick="openModal('settings-modal')">⚙️</button>
+    <a class="btn-icon" href="https://github.com/satiricalguru/ShopBot" target="_blank" title="GitHub" rel="noopener noreferrer">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+    </a>
+  </div>
+</header>
+
+<div class="layout">
+  <section class="hero">
+    <h1>Track Stock Across Platforms</h1>
+    <p>Paste any Flipkart or Amazon URL — get live availability & price in seconds</p>
+    <div class="platform-chips">
+      <span class="platform-chip flipkart">🔶 Flipkart</span>
+      <span class="platform-chip amazon">🛒 Amazon</span>
+    </div>
+    <div class="search-wrap">
+      <input type="url" id="url-input" placeholder="https://www.flipkart.com/…  or  https://www.amazon.in/dp/…" autocomplete="off" />
+      <div class="search-divider"></div>
+      <input type="text" id="pincode-input" placeholder="Pincode (Flipkart)" maxlength="6" autocomplete="off" />
+      <button class="btn-check" id="check-btn" onclick="handleCheck()">
+        <div class="spinner"></div>
+        <span class="btn-icon-inner">Check Stock →</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="result-area">
+    <div id="result-card">
+      <div class="rc-header">
+        <span>Latest Check</span>
+        <span id="rc-time"></span>
+      </div>
+      <div id="rc-body" class="rc-body"></div>
+    </div>
+  </div>
+
+  <div class="watchlist-panel">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Watchlist <span class="count-badge" id="wl-count">0</span></div>
+        <button class="btn-add" title="Add to watchlist" onclick="openWatchlistModal()">+</button>
+      </div>
+      <div class="wl-stats" id="wl-stats">
+        <div class="wl-stat"><div class="wl-stat-val green" id="stat-in">0</div><div class="wl-stat-lbl">In Stock</div></div>
+        <div class="wl-stat"><div class="wl-stat-val red" id="stat-out">0</div><div class="wl-stat-lbl">Out of Stock</div></div>
+        <div class="wl-stat"><div class="wl-stat-val yellow" id="stat-checks">0</div><div class="wl-stat-lbl">Checks Done</div></div>
+      </div>
+      <div class="wl-how" id="wl-how">
+        <div class="how-steps">
+          <div class="how-step">
+            <div class="how-step-icon">🔗</div>
+            <div><div class="how-step-title">Paste a product URL</div><div class="how-step-desc">Works with Flipkart and Amazon product pages</div></div>
+          </div>
+          <div class="how-step">
+            <div class="how-step-icon">⏱️</div>
+            <div><div class="how-step-title">Set check interval</div><div class="how-step-desc">ShopBot re-checks every N seconds automatically in the background</div></div>
+          </div>
+          <div class="how-step">
+            <div class="how-step-icon">🔔</div>
+            <div><div class="how-step-title">Get alerted instantly</div><div class="how-step-desc">Live badge update + optional Telegram push the moment it's back in stock</div></div>
+          </div>
+        </div>
+        <button class="wl-how-cta" onclick="openWatchlistModal()">+ Start Watching a Product</button>
+      </div>
+      <div id="watchlist-items"></div>
+    </div>
+  </div>
+
+  <div class="history-panel">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Check History <span class="count-badge" id="hist-count">0</span></div>
+        <button class="btn-clear-hist" id="clear-hist-btn" onclick="clearCheckHistory()" title="Clear history">✕</button>
+      </div>
+      <div id="history-list"><div class="hist-empty" id="hist-empty">No checks yet</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Watchlist Modal -->
+<div class="modal-overlay" id="watchlist-modal">
+  <div class="modal">
+    <h2>Add to Watchlist</h2>
+    <div class="form-group">
+      <label class="form-label">Product URL (Flipkart or Amazon)</label>
+      <input class="form-input" type="url" id="wl-url" placeholder="https://www.flipkart.com/… or https://www.amazon.in/dp/…" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Label (optional)</label>
+      <input class="form-input" type="text" id="wl-label" placeholder="e.g. PS5 Slim" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Delivery Pincode — Flipkart only (optional)</label>
+      <input class="form-input" type="text" id="wl-pincode" placeholder="e.g. 831001" maxlength="6" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Check every (seconds)</label>
+      <input class="form-input" type="number" id="wl-interval" value="30" min="10" max="3600" />
+      <div class="form-hint">Minimum 10s. Lower = more real-time but heavier on resources.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-sm" onclick="closeModal('watchlist-modal')">Cancel</button>
+      <button class="btn-sm primary" onclick="submitWatchlist()">Start Watching</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal">
+    <h2>⚙️ Settings</h2>
+    <div class="settings-section">
+      <h3>Server Connection</h3>
+      <div class="form-group">
+        <label class="form-label">Backend API URL</label>
+        <input class="form-input" type="url" id="s-backend-url" placeholder="e.g. http://localhost:8000 or https://your-backend.com" />
+        <div class="form-hint">Leave blank to default to current origin (localhost).</div>
+      </div>
+    </div>
+    <div class="settings-section">
+      <h3>Telegram Notifications</h3>
+      <div class="toggle-row">
+        <span>Enable Notifications</span>
+        <label class="toggle"><input type="checkbox" id="notif-toggle" /><span class="toggle-slider"></span></label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Bot Token</label>
+        <input class="form-input" type="password" id="tg-token" placeholder="Enter bot token…" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Chat ID</label>
+        <input class="form-input" type="text" id="tg-chat" placeholder="Enter chat ID…" />
+      </div>
+    </div>
+    <div class="settings-section">
+      <h3>Monitoring</h3>
+      <div class="form-group">
+        <label class="form-label">Default Check Interval (seconds)</label>
+        <input class="form-input" type="number" id="s-interval" value="30" min="10" max="3600" />
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-sm" onclick="closeModal('settings-modal')">Cancel</button>
+      <button class="btn-sm primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+/* ══════════════════════════════════════════════════════
+   ANIMATED BACKGROUND — aurora + constellation + shooting stars
+══════════════════════════════════════════════════════ */
+(function() {
+  const canvas = document.getElementById('bg-canvas');
+  const ctx    = canvas.getContext('2d');
+  let W, H;
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  /* ── Mouse tracking ── */
+  let mouse = { x: W * 0.5, y: H * 0.5 };
+  window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+
+  /* ── 1. Deep orbs (slow aurora blobs) ── */
+  const orbs = [
+    { x:0.12, y:0.20, r:420, hue:22,  spd:0.00010, ang:0.0,  amp:0.07 },
+    { x:0.82, y:0.12, r:360, hue:195, spd:0.00014, ang:2.1,  amp:0.06 },
+    { x:0.50, y:0.78, r:400, hue:22,  spd:0.00012, ang:4.3,  amp:0.08 },
+    { x:0.88, y:0.68, r:280, hue:270, spd:0.00017, ang:1.0,  amp:0.05 },
+    { x:0.30, y:0.55, r:300, hue:15,  spd:0.00009, ang:3.5,  amp:0.06 },
+  ];
+
+  /* ── 2. Constellation particles ── */
+  const STAR_COUNT = 90;
+  const stars = Array.from({ length: STAR_COUNT }, () => ({
+    x:    Math.random() * 1,
+    y:    Math.random() * 1,
+    size: Math.random() * 1.8 + 0.3,
+    vx:   (Math.random() - 0.5) * 0.00010,
+    vy:   (Math.random() - 0.5) * 0.00010,
+    alpha: Math.random() * 0.5 + 0.15,
+    hue:  [22, 195, 270][Math.floor(Math.random()*3)],
+    twinkleSpeed: Math.random() * 0.03 + 0.01,
+    twinkleOffset: Math.random() * Math.PI * 2,
+  }));
+  const CONNECT_DIST = 0.14; // fraction of screen width
+
+  /* ── 3. Shooting stars ── */
+  const MAX_SHOOTS = 4;
+  const shoots = [];
+  function spawnShoot() {
+    shoots.push({
+      x:     Math.random(),
+      y:     Math.random() * 0.5,
+      len:   Math.random() * 0.12 + 0.06,
+      speed: Math.random() * 0.004 + 0.003,
+      alpha: 1,
+      angle: Math.PI / 5 + (Math.random() - 0.5) * 0.3,
+      hue:   Math.random() > 0.5 ? 22 : 195,
+      life:  1,
+    });
+  }
+  // spawn initial batch staggered
+  for (let i = 0; i < MAX_SHOOTS; i++) setTimeout(spawnShoot, i * 2200);
+  setInterval(() => { if (shoots.length < MAX_SHOOTS) spawnShoot(); }, 1800);
+
+  /* ── 4. Pulsing rings (emanate from orb centers) ── */
+  const rings = [];
+  function spawnRing(cx, cy, hue) {
+    rings.push({ cx, cy, r: 0, maxR: 180 + Math.random()*120, alpha: 0.25, hue });
+  }
+  orbs.forEach((o, i) => setTimeout(() => {
+    setInterval(() => spawnRing(
+      (o.x + Math.cos(o.ang) * o.amp) * W,
+      (o.y + Math.sin(o.ang) * o.amp) * H,
+      o.hue
+    ), 2800 + i * 400);
+  }, i * 700));
+
+  /* ── 5. Aurora wave strips ── */
+  const waves = Array.from({ length: 3 }, (_, i) => ({
+    hue:    [22, 195, 270][i],
+    yBase:  0.25 + i * 0.25,
+    amp:    0.04 + i * 0.015,
+    freq:   0.6 + i * 0.3,
+    phase:  (i * Math.PI * 2) / 3,
+    speed:  0.0004 + i * 0.0002,
+    alpha:  0.035,
+  }));
+
+  /* ── 6. Mouse-repel sparks ── */
+  const sparks = Array.from({ length: 30 }, () => ({
+    x: Math.random(), y: Math.random(),
+    size: Math.random() * 2.5 + 0.5,
+    vx: (Math.random() - 0.5) * 0.0006,
+    vy: (Math.random() - 0.5) * 0.0006,
+    alpha: Math.random() * 0.6 + 0.2,
+    hue: 22,
+  }));
+
+  let t = 0;
+  function draw() {
+    t++;
+    ctx.clearRect(0, 0, W, H);
+
+    /* — Aurora waves — */
+    waves.forEach(w => {
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += 4) {
+        const y = (w.yBase + Math.sin(x / W * w.freq * Math.PI * 2 + w.phase + t * w.speed) * w.amp) * H;
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+      const wg = ctx.createLinearGradient(0, w.yBase * H - 60, 0, w.yBase * H + 80);
+      wg.addColorStop(0, `hsla(${w.hue},90%,60%,0)`);
+      wg.addColorStop(0.5, `hsla(${w.hue},90%,60%,${w.alpha})`);
+      wg.addColorStop(1, `hsla(${w.hue},90%,60%,0)`);
+      ctx.fillStyle = wg;
+      ctx.fill();
+    });
+
+    /* — Deep orbs — */
+    orbs.forEach(o => {
+      const cx = (o.x + Math.cos(o.ang + t * o.spd) * o.amp) * W;
+      const cy = (o.y + Math.sin(o.ang + t * o.spd * 0.7) * o.amp) * H;
+      const g  = ctx.createRadialGradient(cx, cy, 0, cx, cy, o.r);
+      const a  = o.hue === 22 ? 0.12 : 0.07;
+      g.addColorStop(0,   `hsla(${o.hue},90%,60%,${a})`);
+      g.addColorStop(0.5, `hsla(${o.hue},90%,60%,${a*0.4})`);
+      g.addColorStop(1,   `hsla(${o.hue},90%,60%,0)`);
+      ctx.beginPath(); ctx.arc(cx, cy, o.r, 0, Math.PI*2);
+      ctx.fillStyle = g; ctx.fill();
+    });
+
+    /* — Pulsing rings — */
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const rg = rings[i];
+      rg.r     += 1.4;
+      rg.alpha  = 0.25 * (1 - rg.r / rg.maxR);
+      if (rg.r >= rg.maxR) { rings.splice(i, 1); continue; }
+      ctx.beginPath(); ctx.arc(rg.cx, rg.cy, rg.r, 0, Math.PI*2);
+      ctx.strokeStyle = `hsla(${rg.hue},90%,65%,${rg.alpha})`;
+      ctx.lineWidth   = 1.2;
+      ctx.stroke();
+    }
+
+    /* — Constellation lines — */
+    const cd = CONNECT_DIST * W;
+    for (let i = 0; i < stars.length; i++) {
+      for (let j = i + 1; j < stars.length; j++) {
+        const dx = (stars[i].x - stars[j].x) * W;
+        const dy = (stars[i].y - stars[j].y) * H;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < cd) {
+          const fade = 1 - dist / cd;
+          ctx.beginPath();
+          ctx.moveTo(stars[i].x * W, stars[i].y * H);
+          ctx.lineTo(stars[j].x * W, stars[j].y * H);
+          ctx.strokeStyle = `rgba(255,180,80,${fade * 0.12})`;
+          ctx.lineWidth   = 0.6;
+          ctx.stroke();
+        }
+      }
+    }
+
+    /* — Stars (twinkle + drift) — */
+    stars.forEach(s => {
+      s.x += s.vx; s.y += s.vy;
+      if (s.x < 0) s.x = 1; if (s.x > 1) s.x = 0;
+      if (s.y < 0) s.y = 1; if (s.y > 1) s.y = 0;
+      const tw = s.alpha * (0.6 + 0.4 * Math.sin(t * s.twinkleSpeed + s.twinkleOffset));
+      ctx.beginPath();
+      ctx.arc(s.x * W, s.y * H, s.size, 0, Math.PI*2);
+      ctx.fillStyle = `hsla(${s.hue},80%,72%,${tw})`;
+      ctx.fill();
+    });
+
+    /* — Mouse-repel sparks — */
+    sparks.forEach(s => {
+      const sx = s.x * W, sy = s.y * H;
+      const dx = sx - mouse.x, dy = sy - mouse.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 160) {
+        const force = (160 - dist) / 160 * 0.0015;
+        s.vx += (dx / dist) * force;
+        s.vy += (dy / dist) * force;
+      }
+      // drag
+      s.vx *= 0.97; s.vy *= 0.97;
+      s.x  += s.vx; s.y  += s.vy;
+      if (s.x < 0) s.x = 1; if (s.x > 1) s.x = 0;
+      if (s.y < 0) s.y = 1; if (s.y > 1) s.y = 0;
+      ctx.beginPath();
+      ctx.arc(sx, sy, s.size, 0, Math.PI*2);
+      const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, s.size * 3);
+      glow.addColorStop(0,   `hsla(22,100%,70%,${s.alpha})`);
+      glow.addColorStop(1,   `hsla(22,100%,70%,0)`);
+      ctx.fillStyle = glow;
+      ctx.fill();
+    });
+
+    /* — Shooting stars — */
+    for (let i = shoots.length - 1; i >= 0; i--) {
+      const s  = shoots[i];
+      s.x     += Math.cos(s.angle) * s.speed;
+      s.y     += Math.sin(s.angle) * s.speed;
+      s.life  -= 0.012;
+      if (s.life <= 0 || s.x > 1.1 || s.y > 1.1) { shoots.splice(i, 1); continue; }
+      const sx = s.x * W, sy = s.y * H;
+      const ex = sx - Math.cos(s.angle) * s.len * W;
+      const ey = sy - Math.sin(s.angle) * s.len * H;
+      const sg = ctx.createLinearGradient(ex, ey, sx, sy);
+      sg.addColorStop(0, `hsla(${s.hue},100%,80%,0)`);
+      sg.addColorStop(1, `hsla(${s.hue},100%,80%,${s.life * 0.9})`);
+      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(sx, sy);
+      ctx.strokeStyle = sg; ctx.lineWidth = 1.5; ctx.stroke();
+      // head glow
+      ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI*2);
+      ctx.fillStyle = `hsla(${s.hue},100%,90%,${s.life})`;
+      ctx.fill();
+    }
+
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ══════════════════════════════════════════════════════
+ /* ─── APP STATE  — NOTE: avoid "history" — clashes with window.history
+   ────────────────────────────────────────────────────── */
+let backendUrl = localStorage.getItem('shopbot_backend_url') || '';
+const isStaticHost = !(location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname.startsWith('192.168.'));
+const hasConfiguredBackend = !!backendUrl;
+
+if (!backendUrl && !isStaticHost) {
+  backendUrl = window.location.origin;
+}
+
+if (backendUrl && backendUrl.endsWith('/')) {
+  backendUrl = backendUrl.slice(0, -1);
+}
+
+const API = backendUrl ? backendUrl : '';
+
+let WS_URL;
+if (backendUrl) {
+  const wsProtocol = backendUrl.startsWith('https') ? 'wss:' : 'ws:';
+  const host = backendUrl.replace(/^https?:\/\//, '');
+  WS_URL = `${wsProtocol}//${host}/ws`;
+} else {
+  WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
+}
+
+const SUPPORTED_DOMAINS = ['flipkart.com', 'amazon.in'];
+
+function isSupportedUrl(url) { return SUPPORTED_DOMAINS.some(d => url.includes(d)); }
+
+let watchlist    = [];
+let checkHistory = [];   // ← renamed from "history" (was shadowing window.history)
+let ws           = null;
+let wsRetries    = 0;
+let totalChecks  = 0;
+const countdownState = {};
+
+/* ── WebSocket ── */
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    wsRetries = 0;
+    document.getElementById('ws-dot').classList.add('live');
+    document.getElementById('ws-label').textContent = 'Live';
+  };
+  ws.onclose = () => {
+    document.getElementById('ws-dot').classList.remove('live');
+    document.getElementById('ws-label').textContent = 'Reconnecting…';
+    setTimeout(connectWS, Math.min(1000 * 2 ** wsRetries++, 15000));
+  };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'init') {
+      watchlist    = msg.data.watchlist || [];
+      checkHistory = msg.data.history   || [];
+      renderWatchlist(); renderCheckHistory();
+    } else if (msg.type === 'watchlist_add') {
+      watchlist.push(msg.data); renderWatchlist();
+    } else if (msg.type === 'watchlist_update') {
+      const prev = watchlist.find(i => i.id === msg.data.id);
+      const wasOut = prev && prev.in_stock === false;
+      const idx = watchlist.findIndex(i => i.id === msg.data.id);
+      if (idx >= 0) watchlist[idx] = msg.data; else watchlist.push(msg.data);
+      if (msg.data.status === 'active' && msg.data.last_checked) totalChecks++;
+      renderWatchlist();
+      if (wasOut && msg.data.in_stock) toast(`🟢 ${msg.data.title || 'Product'} is IN STOCK!`, 'success');
+    } else if (msg.type === 'watchlist_remove') {
+      const el = document.getElementById(`wli-${msg.data.id}`);
+      if (el) {
+        el.classList.add('exiting');
+        const animations = el.getAnimations();
+        if (animations.length > 0) {
+          Promise.race([
+            Promise.allSettled(animations.map(a => a.finished)),
+            new Promise(r => setTimeout(r, 350))
+          ]).then(() => {
+            watchlist = watchlist.filter(i => i.id !== msg.data.id);
+            delete countdownState[msg.data.id];
+            renderWatchlist();
+          });
+        } else {
+          setTimeout(() => {
+            watchlist = watchlist.filter(i => i.id !== msg.data.id);
+            delete countdownState[msg.data.id];
+            renderWatchlist();
+          }, 300);
+        }
+      } else {
+        watchlist = watchlist.filter(i => i.id !== msg.data.id);
+        delete countdownState[msg.data.id];
+        renderWatchlist();
+      }
+    } else if (msg.type === 'history_update') {
+      checkHistory.unshift(msg.data);
+      if (checkHistory.length > 200) checkHistory.pop();
+      renderCheckHistory();
+    } else if (msg.type === 'history_clear') {
+      checkHistory = [];
+      totalChecks  = 0;
+      renderCheckHistory();
+      renderWatchlist();
+    }
+  };
+}
+
+/* ── Check stock ── */
+async function handleCheck() {
+  const url     = document.getElementById('url-input').value.trim();
+  const pincode = document.getElementById('pincode-input').value.trim();
+  if (!url || !isSupportedUrl(url)) {
+    toast('Please enter a valid Flipkart or Amazon URL', 'error'); return;
+  }
+  const btn = document.getElementById('check-btn');
+  btn.classList.add('loading');
+  try {
+    const res  = await fetch(`${API}/api/check`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ url, pincode: pincode || null }),
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.detail || 'Server error', 'error'); return; }
+    renderResult(data);
+  } catch { toast('Failed to reach the server. Is the backend running?', 'error'); }
+  finally { btn.classList.remove('loading'); }
+}
+document.getElementById('url-input').addEventListener('keydown',   e => { if (e.key==='Enter') handleCheck(); });
+document.getElementById('pincode-input').addEventListener('keydown', e => { if (e.key==='Enter') handleCheck(); });
+
+/* ── Result card ── */
+function platformBadgeHtml(platform) {
+  const labels = { flipkart:'🔶 Flipkart', amazon:'🛒 Amazon' };
+  return platform ? `<span class="platform-badge ${platform}">${labels[platform]||platform}</span>` : '';
+}
+
+function renderResult(d) {
+  const card = document.getElementById('result-card');
+  const body = document.getElementById('rc-body');
+  document.getElementById('rc-time').textContent = fmtTime(new Date().toISOString());
+  if (d.error) { body.innerHTML=`<div class="rc-error">⚠️ ${esc(d.error)}</div>`; card.className='visible'; return; }
+  const pillClass = d.in_stock ? 'in-stock' : (d.stock_label==='Unknown' ? 'unknown' : 'out-stock');
+  const label     = d.stock_label || (d.in_stock ? 'In Stock' : 'Out of Stock');
+  const imgHtml   = d.image
+    ? `<img class="rc-img" src="${esc(d.image)}" alt="product" onerror="this.style.display='none'">`
+    : `<div class="rc-img-ph">🛒</div>`;
+  const pincodeHtml = d.pincode
+    ? `<div style="margin-top:10px;font-size:.84rem;color:var(--muted2);display:flex;align-items:center;gap:7px;">
+         <span>📍</span><span><b>${esc(d.pincode)}:</b> ${esc(d.pincode_result||'Deliverable')}</span></div>`
+    : '';
+  body.innerHTML = `
+    ${imgHtml}
+    <div class="rc-info">
+      <div class="rc-meta" style="margin-bottom:9px;">${platformBadgeHtml(d.platform)}</div>
+      <div class="rc-title">${esc(d.title)}</div>
+      <div class="rc-meta">
+        ${d.price ? `<span class="rc-price">${esc(d.price)}</span>` : ''}
+        <span class="status-pill ${pillClass}"><span class="pill-dot"></span>${label}</span>
+      </div>
+      ${pincodeHtml}
+      <div class="rc-actions" style="margin-top:14px;">
+        <a class="btn-sm" href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a>
+        <button class="btn-sm primary" onclick="quickAddToWatchlist('${esc(d.url)}','${esc(d.title)}','${esc(d.pincode||'')}')">+ Watch</button>
+      </div>
+    </div>`;
+  card.classList.add('visible');
+  if (d.in_stock) toast(`🟢 ${d.title} — In Stock!`, 'success');
+  else toast(`🔴 ${d.title} — ${label}`, 'info');
+}
+
+/* ── Watchlist render ── */
+function renderWatchlist() {
+  const container = document.getElementById('watchlist-items');
+  const howEl     = document.getElementById('wl-how');
+  const statsEl   = document.getElementById('wl-stats');
+  const pillEl    = document.getElementById('monitor-pill');
+
+  document.getElementById('wl-count').textContent = watchlist.length;
+
+  if (watchlist.length > 0) {
+    pillEl.classList.add('visible');
+    document.getElementById('monitor-count').textContent  = watchlist.length;
+    document.getElementById('monitor-plural').textContent = watchlist.length === 1 ? '' : 's';
+  } else {
+    pillEl.classList.remove('visible');
+  }
+
+  if (watchlist.length > 0) {
+    document.getElementById('stat-in').textContent     = watchlist.filter(i => i.in_stock === true).length;
+    document.getElementById('stat-out').textContent    = watchlist.filter(i => i.in_stock === false && i.status !== 'pending').length;
+    document.getElementById('stat-checks').textContent = totalChecks;
+    statsEl.classList.add('visible');
+    howEl.classList.remove('visible');
+  } else {
+    statsEl.classList.remove('visible');
+    howEl.classList.add('visible');
+    container.innerHTML = '';
+    return;
+  }
+
+  const pfxMap   = { flipkart:'🔶', amazon:'🛒' };
+  const pfxClass = { flipkart:'platform-fk', amazon:'platform-az' };
+
+  container.innerHTML = watchlist.map(item => {
+    const isChecking = item.status === 'checking';
+    const dotClass   = isChecking ? 'checking' : item.in_stock === true ? 'in' : item.in_stock === false ? 'out' : 'pending';
+    const stockClass = isChecking ? 'pending'  : item.in_stock === true ? 'in' : item.in_stock === false ? 'out' : 'pending';
+    const stockLabel = isChecking ? 'Checking…' : item.in_stock === true ? item.stock_label||'In Stock' : item.in_stock === false ? item.stock_label||'Out of Stock' : 'Pending…';
+    const pfx        = pfxMap[item.platform] || '';
+    const pfxCls     = pfxClass[item.platform] || '';
+
+    const platformTag  = pfx ? `<span class="wl-meta-tag ${pfxCls}">${pfx} ${item.platform}</span>` : '';
+    const intervalTag  = `<span class="wl-meta-tag interval">⏱ every ${item.interval}s</span>`;
+    const checkingTag  = isChecking ? `<span class="wl-meta-tag checking-label">◉ Scanning now…</span>` : '';
+    const countdownTag = !isChecking && item.last_checked ? `<span class="wl-meta-tag countdown" id="cd-${item.id}">next in …</span>` : '';
+    const pincodeTag   = item.pincode ? `<span class="wl-meta-tag pincode">📍 ${esc(item.pincode)}</span>` : '';
+    const lastChkTag   = item.last_checked ? `<span class="wl-meta-tag">✓ ${timeAgo(item.last_checked)}</span>` : '';
+    const pinResult    = item.pincode_result ? `<div style="font-size:.7rem;color:var(--muted2);margin-top:5px;">📍 ${esc(item.pincode_result)}</div>` : '';
+
+    return `<div class="wl-item${isChecking?' is-checking':''}" id="wli-${item.id}">
+      <div class="wl-status-col"><div class="wl-status-dot ${dotClass}"></div></div>
+      <div class="wl-info">
+        <div class="wl-name">${esc(item.title || item.label)}</div>
+        <div class="wl-price-row">
+          ${item.price ? `<span class="wl-price">${esc(item.price)}</span>` : ''}
+          <span class="wl-stock-pill ${stockClass}">${stockLabel}</span>
+        </div>
+        <div class="wl-meta-row">${platformTag}${intervalTag}${checkingTag}${countdownTag}${pincodeTag}${lastChkTag}</div>
+        ${pinResult}
+      </div>
+      <div class="wl-actions">
+        <button class="wl-remove" onclick="removeWatchlist('${item.id}')" title="Remove">✕</button>
+        <a class="wl-open-link" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a>
+      </div>
+    </div>`;
+  }).join('');
+
+  watchlist.forEach(item => {
+    if (item.status !== 'checking' && item.last_checked && item.interval) {
+      startCountdown(item.id, item.last_checked, item.interval);
+    }
+  });
+}
+
+function startCountdown(id, lastChecked, interval) {
+  if (countdownState[id]?.timerId) clearInterval(countdownState[id].timerId);
+  const getEl = () => document.getElementById(`cd-${id}`);
+  function tick() {
+    const el = getEl();
+    if (!el) { clearInterval(countdownState[id]?.timerId); return; }
+    const elapsed   = Math.floor((Date.now() - new Date(lastChecked)) / 1000);
+    const remaining = Math.max(0, interval - elapsed);
+    if (remaining === 0) {
+      el.textContent  = 'checking soon…'; el.style.color = '';
+    } else if (remaining < 10) {
+      el.textContent  = `next in ${remaining}s`; el.style.color = 'var(--red)';
+    } else {
+      el.textContent  = `next in ${remaining}s`; el.style.color = '';
+    }
+  }
+  tick();
+  countdownState[id] = { timerId: setInterval(tick, 1000) };
+}
+
+/* ── Watchlist CRUD ── */
+function openWatchlistModal(prefillUrl='', prefillLabel='', prefillPincode='') {
+  document.getElementById('wl-url').value      = prefillUrl;
+  document.getElementById('wl-label').value    = prefillLabel;
+  document.getElementById('wl-pincode').value  = prefillPincode;
+  document.getElementById('wl-interval').value = '30';
+  openModal('watchlist-modal');
+}
+function quickAddToWatchlist(url, title, pincode='') { openWatchlistModal(url, title, pincode); }
+
+async function submitWatchlist() {
+  const url      = document.getElementById('wl-url').value.trim();
+  const label    = document.getElementById('wl-label').value.trim();
+  const interval = parseInt(document.getElementById('wl-interval').value) || 30;
+  const pincode  = document.getElementById('wl-pincode').value.trim();
+  if (!url || !isSupportedUrl(url)) { toast('Please enter a valid Flipkart or Amazon URL', 'error'); return; }
+  try {
+    const res = await fetch(`${API}/api/watchlist`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ url, label, interval, pincode: pincode || null }),
+    });
+    if (!res.ok) { const d = await res.json(); toast(d.detail||'Failed to add','error'); return; }
+    closeModal('watchlist-modal');
+    toast('✅ Added to watchlist — monitoring started!', 'success');
+  } catch { toast('Failed to add to watchlist', 'error'); }
+}
+
+async function removeWatchlist(id) {
+  try { await fetch(`${API}/api/watchlist/${id}`, { method:'DELETE' }); }
+  catch { toast('Failed to remove item', 'error'); }
+}
+
+/* ── History (renamed to avoid window.history clash) ── */
+function renderCheckHistory() {
+  const el    = document.getElementById('history-list');
+  const empty = document.getElementById('hist-empty');
+  document.getElementById('hist-count').textContent = checkHistory.length;
+  if (!checkHistory.length) {
+    el.innerHTML = '';
+    el.appendChild(empty);
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  const pfxMap = { flipkart:'🔶', amazon:'🛒' };
+  el.innerHTML = checkHistory.slice(0, 80).map(h => {
+    const cls = h.error ? 'err' : h.in_stock ? 'in' : 'out';
+    const lbl = h.error ? 'Error' : h.stock_label || (h.in_stock ? 'In Stock' : 'Out of Stock');
+    return `<div class="hist-item">
+      <div class="hist-indicator ${cls}"></div>
+      <div class="hist-info">
+        <div class="hist-title">${pfxMap[h.platform]||''} ${esc(h.title)}</div>
+        <div class="hist-meta"><span>${fmtTime(h.timestamp)}</span>${h.price?`<span>${esc(h.price)}</span>`:''}</div>
+      </div>
+      <span class="hist-status ${cls}">${lbl}</span>
+    </div>`;
+  }).join('');
+}
+
+/* ── THIS IS THE FIX — renamed so it doesn't conflict with window.history ── */
+async function clearCheckHistory() {
+  try {
+    await fetch(`${API}/api/history`, { method: 'DELETE' });
+    // server broadcasts history_clear → WS handler updates UI
+  } catch {
+    // fallback: clear locally if server unreachable
+    checkHistory = [];
+    totalChecks  = 0;
+    renderCheckHistory();
+    renderWatchlist();
+    toast('History cleared (offline)', 'info');
+  }
+}
+
+/* ── Settings ── */
+async function openSettingsModal() {
+  document.getElementById('s-backend-url').value = localStorage.getItem('shopbot_backend_url') || '';
+  try {
+    const res = await fetch(`${API}/api/settings`);
+    const s   = await res.json();
+    document.getElementById('tg-chat').value        = s.telegram_chat_id || '';
+    document.getElementById('s-interval').value     = s.check_interval   || 30;
+    document.getElementById('notif-toggle').checked = s.notifications_enabled || false;
+  } catch {}
+  document.getElementById('settings-modal').classList.add('open');
+}
+
+async function saveSettings() {
+  const newBackendUrl = document.getElementById('s-backend-url').value.trim();
+  const oldBackendUrl = localStorage.getItem('shopbot_backend_url') || '';
+  let urlChanged = false;
+  
+  if (newBackendUrl !== oldBackendUrl) {
+    if (newBackendUrl) {
+      localStorage.setItem('shopbot_backend_url', newBackendUrl);
+    } else {
+      localStorage.removeItem('shopbot_backend_url');
+    }
+    urlChanged = true;
+  }
+
+  const body = {
+    telegram_token:        document.getElementById('tg-token').value,
+    telegram_chat_id:      document.getElementById('tg-chat').value,
+    check_interval:        parseInt(document.getElementById('s-interval').value),
+    notifications_enabled: document.getElementById('notif-toggle').checked,
+  };
+  
+  try {
+    await fetch(`${API}/api/settings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    toast('Settings saved ✓','success');
+    closeModal('settings-modal');
+    if (urlChanged) {
+      toast('Backend URL updated! Reloading...', 'success');
+      setTimeout(() => location.reload(), 1500);
+    }
+  } catch {
+    if (urlChanged) {
+      toast('Connection settings saved! Reloading...', 'success');
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      toast('Failed to save settings','error');
+    }
+  }
+}
+
+/* ── Modal helpers ── */
+function openModal(id) {
+  if (id === 'settings-modal') { openSettingsModal(); return; }
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+
+/* ── Toast ── */
+function toast(msg, type='info') {
+  const icons = { success:'✅', error:'❌', info:'🔔' };
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span class="toast-icon">${icons[type]}</span><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => t.remove(), 4500);
+}
+
+/* ── Utilities ── */
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtTime(iso) { try { return new Date(iso).toLocaleTimeString(); } catch { return iso; } }
+function timeAgo(iso) {
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s < 60)   return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  return `${Math.floor(s/3600)}h ago`;
+}
+
+if (isStaticHost && !hasConfiguredBackend) {
+  document.getElementById('static-host-banner').style.display = 'flex';
+}
+
+connectWS();
+</script>
+</body>
+</html>
