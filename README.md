@@ -1,6 +1,8 @@
 # 🛒 ShopBot — Multi-Platform Stock Tracker
 
 > Real-time stock & price monitoring for **Flipkart** and **Amazon** — with Telegram alerts and a live web dashboard.
+> 
+> **Live Web App:** [satiricalguru.github.io/ShopBot](https://satiricalguru.github.io/ShopBot/)
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-blue?style=flat-square&logo=python)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green?style=flat-square&logo=fastapi)
@@ -79,6 +81,14 @@ No `.env` editing needed. Open the app at **http://localhost:8000**, click ⚙�
 | **Chat ID** | Message your bot, then visit `https://api.telegram.org/bot<TOKEN>/getUpdates` |
 
 > **Telegram is optional.** The app works without it — you just won't receive push notifications.
+
+### Static Hosting & Custom Backend
+
+If you are using the live GitHub Pages app at [satiricalguru.github.io/ShopBot](https://satiricalguru.github.io/ShopBot/) or any static server, you will need to point the frontend to your running backend:
+
+1. Open the app and click the **⚙️ Settings** icon in the top header.
+2. Under **Server Connection**, set the **Backend API URL** to your deployed backend instance (e.g. `https://your-backend.onrender.com` or `http://localhost:8000` if running the backend locally).
+3. Click **Save Settings**. The app will reload and establish connection with your custom server automatically.
 
 The only thing in `.env` is the default check interval:
 
